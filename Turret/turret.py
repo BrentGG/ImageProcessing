@@ -1,14 +1,8 @@
 import cv2 as cv
 import imutils
 import ctypes
-import math
 
-# Camera data
-camHeight = 134  # in cm
-camHorFOV = 64.8  # 69.3  # 58.8  # in degrees
-camVerFOV = 51.3  # 53.5  # 45.8  # in degrees
-
-z = 123.0  # use a set distance to the camera for now
+buffer = 20
 
 if __name__ == '__main__':
     # Get screen info
@@ -25,6 +19,8 @@ if __name__ == '__main__':
     # Get the facial detection cascade
     faceCascade = cv.CascadeClassifier(cv.data.haarcascades + "haarcascade_frontalface_alt.xml")
 
+    targetDetected = False
+    targetAcquired = False
     while True:
         # Read frame and detect face
         success, img = cap.read()
@@ -34,25 +30,59 @@ if __name__ == '__main__':
         imgGrey = cv.equalizeHist(imgGrey)
         faces = faceCascade.detectMultiScale(imgGrey, 1.3, 5)
 
-        img = cv.rectangle(img, ((int(len(img[0]) / 2)), int(len(img) / 2)), (int(len(img[0]) / 2) + 5, int(len(img) / 2) + 5), (0, 255, 0), 2)
+        imgCenter = [int(len(img[0]) / 2), int(len(img) / 2)]
+
+        # Draw reticle
+        img = cv.circle(img, (imgCenter[0], imgCenter[1]), 60, (0, 0, 255), 2)
+        img = cv.line(img, (imgCenter[0], imgCenter[1] - 60), (imgCenter[0], imgCenter[1] - 10), (0, 0, 255), 2)
+        img = cv.line(img, (imgCenter[0], imgCenter[1] + 60), (imgCenter[0], imgCenter[1] + 10), (0, 0, 255), 2)
+        img = cv.line(img, (imgCenter[0] - 60, imgCenter[1]), (imgCenter[0] - 15, imgCenter[1]), (0, 0, 255), 2)
+        img = cv.line(img, (imgCenter[0] + 60, imgCenter[1]), (imgCenter[0] + 15, imgCenter[1]), (0, 0, 255), 2)
+        img = cv.line(img, (imgCenter[0], imgCenter[1] + 15), (imgCenter[0], imgCenter[1] - 15), (0, 0, 255), 1)
+        img = cv.line(img, (imgCenter[0] + 15, imgCenter[1]), (imgCenter[0] - 15, imgCenter[1]), (0, 0, 255), 1)
+
         if len(faces) > 0:
+            if not targetDetected:
+                print("TARGET DETECTED")
+                targetDetected = True
+
             # Draw rectangle around face
             fx, fy, fw, fh = faces[0]
-            img = cv.rectangle(img, (fx, fy), (fx + fw, fy + fh), (255, 0, 0), 2)
-            img = cv.rectangle(img, (fx + int(fw / 2), fy + int(fh / 2)), (fx + int(fw / 2) + 5, fy + int(fh / 2) + 5), (0, 255, 0), 2)
+            fcx, fcy = fx + int(fw / 2), fy + int(fh / 2)
+            img = cv.rectangle(img, (fx, fy), (fx + fw, fy + fh), (0, 255, 0), 2)
+            img = cv.circle(img, (fcx, fcy), 2, (0, 255, 0), 2)
 
-            # Calculate face position relative to camera
-            halfX = math.tan(math.radians(camHorFOV/2)) * z
-            x = (fx + (fw / 2) - (len(img[0]) / 2)) / (len(img[0]) / 2) * halfX
-            halfY = math.tan(math.radians(camVerFOV/2)) * z
-            y = (fy + (fh / 2) - (len(img) / 2)) / (len(img) / 2) * halfY
-            y *= -1
+            # Calculate where to move
+            yaw = False
+            pitch = False
+            if fcx < imgCenter[0] - buffer:
+                print("yaw right", end="")
+                yaw = True
+            elif fcx > imgCenter[0] + buffer:
+                print("yaw left", end="")
+                yaw = True
+            if fcy < imgCenter[1] - buffer:
+                if yaw:
+                    print(" and ", end="")
+                print("pitch up", end="")
+                pitch = True
+            elif fcy > imgCenter[1] + buffer:
+                if yaw:
+                    print(" and ", end="")
+                print("pitch down", end="")
+                pitch = True
 
-            # Calculate pitch and yaw relative to camera
-            yaw = math.degrees(math.atan(x / z))
-            pitch = math.degrees(math.atan(y / z))
-
-            print("x:{:6}   y:{:6}   z:{:6}   yaw:{:6}   pitch:{:6}".format(round(x, 1), round(y, 1), round(z, 1), round(yaw, 1), round(pitch, 1)))
+            if not yaw and not pitch:
+                if not targetAcquired:
+                    print("TARGET ACQUIRED")
+                    targetAcquired = True
+            else:
+                print("")
+                if targetAcquired:
+                    print("TARGET LOST")
+                    targetAcquired = False
+        else:
+            targetDetected = False
 
         # Show frame
         cv.imshow('Turret', img)
